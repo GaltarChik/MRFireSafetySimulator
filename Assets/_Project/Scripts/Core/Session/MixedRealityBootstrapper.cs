@@ -3,6 +3,9 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine.Android;
+#endif
 
 namespace MRFireSafety.Core.Session
 {
@@ -22,7 +25,14 @@ namespace MRFireSafety.Core.Session
 
         [Header("Startup")]
         [SerializeField, Min(1f)] private float _sessionStartTimeoutSeconds = 10f;
+        [SerializeField, Min(1f)] private float _permissionTimeoutSeconds = 30f;
         [SerializeField] private bool _logSessionState = true;
+
+        /// <summary>
+        /// Android runtime permission that gates access to the room model on Meta headsets. Plane
+        /// detection returns nothing until the trainee grants it, even though the manifest declares it.
+        /// </summary>
+        private const string SpatialDataPermission = "com.oculus.permission.USE_SCENE";
 
         private Camera _passthroughCamera;
         private bool _isPassthroughReady;
@@ -86,6 +96,7 @@ namespace MRFireSafety.Core.Session
             }
 
             ConfigurePassthroughCamera();
+            yield return RequestSpatialDataPermission();
 
             float elapsedTime = 0f;
             while (ARSession.state < ARSessionState.SessionInitializing && elapsedTime < _sessionStartTimeoutSeconds)
@@ -120,6 +131,37 @@ namespace MRFireSafety.Core.Session
             {
                 _cameraBackground.enabled = true;
             }
+        }
+
+        /// <summary>
+        /// Requests the Android spatial-data permission required to read the room model, and waits
+        /// for the trainee to answer the system dialog. On other platforms the request is a no-op.
+        /// </summary>
+        /// <returns>An enumerator that completes once the permission is granted or the wait times out.</returns>
+        private IEnumerator RequestSpatialDataPermission()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (Permission.HasUserAuthorizedPermission(SpatialDataPermission))
+            {
+                yield break;
+            }
+
+            Permission.RequestUserPermission(SpatialDataPermission);
+
+            float elapsedTime = 0f;
+            while (!Permission.HasUserAuthorizedPermission(SpatialDataPermission) && elapsedTime < _permissionTimeoutSeconds)
+            {
+                elapsedTime += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            if (!Permission.HasUserAuthorizedPermission(SpatialDataPermission))
+            {
+                ReportUnavailable("Spatial data permission was not granted, so the physical floor cannot be detected. Grant it in the system settings and restart the application.");
+            }
+#else
+            yield break;
+#endif
         }
 
         private void HandleSessionStateChanged(ARSessionStateChangedEventArgs eventArgs)

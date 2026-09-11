@@ -1,0 +1,17 @@
+{
+    "name": "MRFireSafety.Analytics",
+    "rootNamespace": "MRFireSafety.Analytics",
+    "references": [
+        "MRFireSafety.Fire",
+        "MRFireSafety.Suppression"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

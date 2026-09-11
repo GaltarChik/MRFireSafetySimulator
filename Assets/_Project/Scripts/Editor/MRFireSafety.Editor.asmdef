@@ -1,0 +1,24 @@
+{
+    "name": "MRFireSafety.Editor",
+    "rootNamespace": "MRFireSafety.Editor",
+    "references": [
+        "MRFireSafety.Core",
+        "MRFireSafety.Fire",
+        "MRFireSafety.Suppression",
+        "MRFireSafety.Analytics",
+        "MRFireSafety.UI",
+        "Unity.TextMeshPro",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,23 @@
+{
+    "name": "MRFireSafety.Core",
+    "rootNamespace": "MRFireSafety.Core",
+    "references": [
+        "MRFireSafety.Fire",
+        "MRFireSafety.Suppression",
+        "MRFireSafety.Analytics",
+        "Unity.XR.ARFoundation",
+        "Unity.XR.ARSubsystems",
+        "Unity.XR.CoreUtils",
+        "Unity.InputSystem",
+        "meta.xr.mrutilitykit"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,86 @@
+{
+    "name": "FireExtinguisherControls",
+    "maps": [
+        {
+            "name": "FireExtinguisher",
+            "id": "b6d5d764-a036-4640-8f42-c84522495e56",
+            "actions": [
+                {
+                    "name": "NozzlePosition",
+                    "type": "PassThrough",
+                    "id": "c76556bb-25f5-4560-a448-97d9af44a01e",
+                    "expectedControlType": "Vector3",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "NozzleRotation",
+                    "type": "PassThrough",
+                    "id": "116d166f-ed31-4146-b6c0-9275d3918d54",
+                    "expectedControlType": "Quaternion",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "Spray",
+                    "type": "Button",
+                    "id": "b9964cb4-b8a2-4824-b9ab-faf58d28ac9f",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "3bf40be2-e81c-4bb6-b731-9a078d21a28e",
+                    "path": "<XRController>{RightHand}/devicePosition",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "OpenXR",
+                    "action": "NozzlePosition",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "f4588e79-b9c5-423e-bbef-2dae2b7f20dd",
+                    "path": "<XRController>{RightHand}/deviceRotation",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "OpenXR",
+                    "action": "NozzleRotation",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "d8b7c70a-05e9-4bfd-b2a8-ca950e4bfc3b",
+                    "path": "<XRController>{RightHand}/triggerPressed",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "OpenXR",
+                    "action": "Spray",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": [
+        {
+            "name": "OpenXR",
+            "bindingGroup": "OpenXR",
+            "devices": [
+                {
+                    "devicePath": "<XRController>",
+                    "isOptional": false,
+                    "isOR": false
+                }
+            ]
+        }
+    ]
+}

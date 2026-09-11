@@ -28,7 +28,10 @@ namespace MRFireSafety.Analytics.Services
             }
 
             string[] reportPaths = Directory.GetFiles(reportsDirectory, "session_*.json", SearchOption.TopDirectoryOnly);
-            Array.Sort(reportPaths, StringComparer.OrdinalDescending);
+
+            // Report names embed a sortable UTC timestamp, so an inverted ordinal comparison yields
+            // the newest report first without reading any file contents.
+            Array.Sort(reportPaths, static (left, right) => string.CompareOrdinal(right, left));
             List<SessionMetrics> reports = new List<SessionMetrics>(reportPaths.Length);
 
             foreach (string reportPath in reportPaths)

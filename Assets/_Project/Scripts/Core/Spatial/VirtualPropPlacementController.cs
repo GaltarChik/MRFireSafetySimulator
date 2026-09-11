@@ -28,6 +28,22 @@ namespace MRFireSafety.Core.Spatial
         /// </summary>
         public bool IsPlaced { get; private set; }
 
+        /// <summary>
+        /// Assigns the placement dependencies without relying on editor-only serialized property
+        /// access, so that scene generation can wire the rig deterministically.
+        /// </summary>
+        /// <param name="spatialAwarenessSystem">System supplying the tracked physical floor.</param>
+        /// <param name="spatialAnchorService">Service creating the placement anchor, or null to place without anchoring.</param>
+        /// <param name="trainingPropTransform">Virtual prop moved onto the floor.</param>
+        /// <param name="headTransform">Transform used as the placement reference, normally the XR camera.</param>
+        public void Configure(SpatialAwarenessSystem spatialAwarenessSystem, SpatialAnchorService spatialAnchorService, Transform trainingPropTransform, Transform headTransform)
+        {
+            _spatialAwarenessSystem = spatialAwarenessSystem;
+            _spatialAnchorService = spatialAnchorService;
+            _trainingPropTransform = trainingPropTransform;
+            _headTransform = headTransform;
+        }
+
         private void Awake()
         {
             if (_spatialAwarenessSystem == null)

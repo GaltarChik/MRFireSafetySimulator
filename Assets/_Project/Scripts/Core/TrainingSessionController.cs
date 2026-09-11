@@ -25,7 +25,6 @@ namespace MRFireSafety.Core
 
         [Header("Start trigger")]
         [SerializeField] private VirtualPropPlacementController _propPlacementController;
-        [SerializeField] private QuestFloorPlacementController _questFloorPlacementController;
         [Tooltip("Editor preview only: starts the session immediately when no placement controller is assigned.")]
         [SerializeField] private bool _startsWithoutPlacement = true;
 
@@ -98,6 +97,11 @@ namespace MRFireSafety.Core
             {
                 _sessionDataManager = GetComponent<SessionDataManager>();
             }
+
+            if (_propPlacementController == null)
+            {
+                _propPlacementController = FindFirstObjectByType<VirtualPropPlacementController>();
+            }
         }
 
         private void OnEnable()
@@ -115,11 +119,6 @@ namespace MRFireSafety.Core
             if (_propPlacementController != null)
             {
                 _propPlacementController.PropPlaced += HandlePropPlaced;
-            }
-
-            if (_questFloorPlacementController != null)
-            {
-                _questFloorPlacementController.PropPlacedOnFloor += HandlePropPlaced;
             }
         }
 
@@ -139,17 +138,11 @@ namespace MRFireSafety.Core
             {
                 _propPlacementController.PropPlaced -= HandlePropPlaced;
             }
-
-            if (_questFloorPlacementController != null)
-            {
-                _questFloorPlacementController.PropPlacedOnFloor -= HandlePropPlaced;
-            }
         }
 
         private void Start()
         {
-            bool hasPlacementTrigger = _propPlacementController != null || _questFloorPlacementController != null;
-            if (hasPlacementTrigger || !_startsWithoutPlacement)
+            if (_propPlacementController != null || !_startsWithoutPlacement)
             {
                 return;
             }

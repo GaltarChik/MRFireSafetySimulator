@@ -53,6 +53,22 @@ namespace MRFireSafety.Suppression.Controllers
         /// </summary>
         public bool IsSpraying { get; private set; }
 
+        /// <summary>
+        /// Assigns the input, nozzle, and feedback references without relying on editor-only
+        /// serialized property access, so that scene generation can wire the rig deterministically.
+        /// </summary>
+        /// <param name="sprayAction">Action held to emit extinguishing agent.</param>
+        /// <param name="nozzleTransform">Transform whose forward direction the ray follows.</param>
+        /// <param name="agentParticleSystem">Particle stream shown while spraying.</param>
+        /// <param name="targetLayers">Layers the suppression ray is allowed to hit.</param>
+        public void Configure(InputActionProperty sprayAction, Transform nozzleTransform, ParticleSystem agentParticleSystem, LayerMask targetLayers)
+        {
+            _sprayAction = sprayAction;
+            _nozzleTransform = nozzleTransform;
+            _agentParticleSystem = agentParticleSystem;
+            _targetLayers = targetLayers;
+        }
+
         private void OnEnable()
         {
             if (_sprayAction.action != null)

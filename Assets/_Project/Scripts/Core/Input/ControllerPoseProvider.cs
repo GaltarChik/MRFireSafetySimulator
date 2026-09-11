@@ -44,6 +44,22 @@ namespace MRFireSafety.Core.Input
         /// </summary>
         public bool IsTracked => _isTracked;
 
+        /// <summary>
+        /// Assigns the tracking inputs and transforms without relying on editor-only serialized
+        /// property access, so that scene generation can wire the rig deterministically.
+        /// </summary>
+        /// <param name="positionAction">Action supplying the controller position.</param>
+        /// <param name="rotationAction">Action supplying the controller rotation.</param>
+        /// <param name="extinguisherTransform">Transform driven by the controller pose.</param>
+        /// <param name="trackingOriginTransform">Transform that tracking-space poses are relative to.</param>
+        public void Configure(InputActionProperty positionAction, InputActionProperty rotationAction, Transform extinguisherTransform, Transform trackingOriginTransform)
+        {
+            _positionAction = positionAction;
+            _rotationAction = rotationAction;
+            _extinguisherTransform = extinguisherTransform;
+            _trackingOriginTransform = trackingOriginTransform;
+        }
+
         private void OnEnable()
         {
             _positionAction.action?.Enable();

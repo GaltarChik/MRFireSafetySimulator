@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/_Project/Scenes/FireTraining.unity
+    guid: 362be372d03fa8349b20f1ca7427d483
+  - enabled: 0
     path: Assets/Scenes/MySpace.unity
     guid: 99c9720ab356a0642a771bea13969a05
   m_configObjects:

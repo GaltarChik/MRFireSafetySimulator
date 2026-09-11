@@ -1,5 +1,4 @@
 using System;
-using Meta.XR.MRUtilityKit;
 using MRFireSafety.Core.Spatial;
 using UnityEngine;
 using UnityEngine.XR.ARFoundation;
@@ -8,16 +7,18 @@ namespace MRFireSafety.Core.Validation
 {
     /// <summary>
     /// Reports actionable setup problems before a mixed-reality training session begins. The
-    /// validator inspects whichever placement path the scene uses, the AR Foundation path or the
-    /// Meta Scene API path, and treats Editor preview as a notice rather than a failure so that
-    /// scene validation stays usable outside a device build.
+    /// validator checks the AR Foundation rig that the prototype depends on and treats Editor
+    /// preview as a notice rather than a failure, so scene validation stays usable outside a
+    /// device build.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class MrReadinessValidator : MonoBehaviour
     {
-        [SerializeField] private QuestFloorPlacementController _questFloorPlacementController;
-        [SerializeField] private VirtualPropPlacementController _propPlacementController;
+        [SerializeField] private ARSession _arSession;
+        [SerializeField] private ARPlaneManager _planeManager;
+        [SerializeField] private ARAnchorManager _anchorManager;
         [SerializeField] private SpatialAwarenessSystem _spatialAwarenessSystem;
+        [SerializeField] private VirtualPropPlacementController _propPlacementController;
         [SerializeField] private bool _validatesOnStart = true;
         [SerializeField] private bool _logSuccessfulValidation = true;
 
@@ -36,21 +37,51 @@ namespace MRFireSafety.Core.Validation
 
             if (Application.isEditor)
             {
-                Debug.Log("MR Fire Safety: Editor preview is active. Passthrough, Scene API, and real floor tracking are validated only in a device build.", this);
+                Debug.Log("MR Fire Safety: Editor preview is active. Passthrough and real floor tracking are validated only in a device build.", this);
             }
 
-            if (_questFloorPlacementController != null)
+            if (_arSession == null)
             {
-                return ValidateQuestScenePath();
+                ReportIssue("No ARSession is present. Add an AR Session and an XR Origin rig to the training scene.");
+                return false;
             }
 
-            if (_propPlacementController != null)
+            if (_planeManager == null)
             {
-                return ValidateArFoundationPath();
+                ReportIssue("No ARPlaneManager is present on the XR Origin. The physical floor cannot be detected.");
+                return false;
             }
 
-            ReportIssue("No placement controller is present. Add either a VirtualPropPlacementController (AR Foundation) or a QuestFloorPlacementController (Meta Scene API).");
-            return false;
+            if (_anchorManager == null)
+            {
+                ReportIssue("No ARAnchorManager is present on the XR Origin. The training prop cannot be world-locked.");
+                return false;
+            }
+
+            if (_spatialAwarenessSystem == null)
+            {
+                ReportIssue("SpatialAwarenessSystem is missing. Floor planes cannot be selected for prop placement.");
+                return false;
+            }
+
+            if (_propPlacementController == null)
+            {
+                ReportIssue("VirtualPropPlacementController is missing. The training prop cannot be placed on the physical floor.");
+                return false;
+            }
+
+            if (!Application.isEditor && ARSession.state == ARSessionState.Unsupported)
+            {
+                ReportIssue("Mixed reality is unsupported on this device. Deploy the build to an OpenXR passthrough headset.");
+                return false;
+            }
+
+            if (_logSuccessfulValidation)
+            {
+                Debug.Log("MR Fire Safety: AR Foundation readiness validation passed.", this);
+            }
+
+            return true;
         }
 
         private void Start()
@@ -63,71 +94,30 @@ namespace MRFireSafety.Core.Validation
 
         private void ResolveComponents()
         {
-            if (_questFloorPlacementController == null)
+            if (_arSession == null)
             {
-                _questFloorPlacementController = FindFirstObjectByType<QuestFloorPlacementController>();
+                _arSession = FindFirstObjectByType<ARSession>();
             }
 
-            if (_propPlacementController == null)
+            if (_planeManager == null)
             {
-                _propPlacementController = FindFirstObjectByType<VirtualPropPlacementController>();
+                _planeManager = FindFirstObjectByType<ARPlaneManager>();
+            }
+
+            if (_anchorManager == null)
+            {
+                _anchorManager = FindFirstObjectByType<ARAnchorManager>();
             }
 
             if (_spatialAwarenessSystem == null)
             {
                 _spatialAwarenessSystem = FindFirstObjectByType<SpatialAwarenessSystem>();
             }
-        }
 
-        private bool ValidateQuestScenePath()
-        {
-            MRUK mruk = MRUK.Instance;
-            if (mruk == null)
+            if (_propPlacementController == null)
             {
-                ReportIssue("Meta MR Utility Kit is missing. Add it to the scene before starting MR training.");
-                return false;
+                _propPlacementController = FindFirstObjectByType<VirtualPropPlacementController>();
             }
-
-            if (!Application.isEditor && mruk.GetCurrentRoom() == null)
-            {
-                ReportIssue("No room model is available. Complete Quest Space Setup and grant Spatial Data permission.");
-                return false;
-            }
-
-            return ReportSuccess("Meta Scene API");
-        }
-
-        private bool ValidateArFoundationPath()
-        {
-            if (FindFirstObjectByType<ARSession>() == null)
-            {
-                ReportIssue("No ARSession is present. Add an AR Session and an XR Origin rig to the training scene.");
-                return false;
-            }
-
-            if (_spatialAwarenessSystem == null)
-            {
-                ReportIssue("SpatialAwarenessSystem is missing. Floor planes cannot be selected for prop placement.");
-                return false;
-            }
-
-            if (!Application.isEditor && ARSession.state == ARSessionState.Unsupported)
-            {
-                ReportIssue("Mixed reality is unsupported on this device. Deploy the build to an OpenXR passthrough headset.");
-                return false;
-            }
-
-            return ReportSuccess("AR Foundation");
-        }
-
-        private bool ReportSuccess(string pathName)
-        {
-            if (_logSuccessfulValidation)
-            {
-                Debug.Log($"MR Fire Safety: MR readiness validation passed for the {pathName} placement path.", this);
-            }
-
-            return true;
         }
 
         private void ReportIssue(string message)

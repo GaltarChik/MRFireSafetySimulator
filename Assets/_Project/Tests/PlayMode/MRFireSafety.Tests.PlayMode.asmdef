@@ -6,6 +6,7 @@
         "MRFireSafety.Suppression",
         "MRFireSafety.Analytics",
         "MRFireSafety.Core",
+        "Unity.InputSystem",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

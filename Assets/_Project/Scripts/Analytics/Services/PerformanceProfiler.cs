@@ -39,6 +39,27 @@ namespace MRFireSafety.Analytics.Services
         /// </summary>
         public float MinimumFramesPerSecond => _sampleCount == 0 ? 0f : _minimumFramesPerSecond;
 
+        /// <summary>
+        /// Gets the frame rate below which a sample is reported as a performance shortfall.
+        /// </summary>
+        public float TargetFramesPerSecond => _targetFramesPerSecond;
+
+        /// <summary>
+        /// Sets the frame rate the session is expected to sustain. The training scene resolves this
+        /// from the refresh rate reported by the XR display, which differs between headsets.
+        /// </summary>
+        /// <param name="targetFramesPerSecond">Expected sustained frame rate, in frames per second.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the target is not positive.</exception>
+        public void SetTargetFrameRate(float targetFramesPerSecond)
+        {
+            if (targetFramesPerSecond <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(targetFramesPerSecond), "The target frame rate must be positive.");
+            }
+
+            _targetFramesPerSecond = targetFramesPerSecond;
+        }
+
         private void Update()
         {
             _elapsedSampleTime += Time.unscaledDeltaTime;

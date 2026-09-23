@@ -177,8 +177,8 @@ namespace MRFireSafety.Editor
             fireTargetCollider.isTrigger = true;
             propObject.AddComponent<FireObjectIntegrityController>();
 
-            CreateFireSource(propObject.transform);
-            CreateSmokeVisual(propObject.transform);
+            ParticleSystem smokeParticleSystem = CreateSmokeVisual(propObject.transform);
+            CreateFireSource(propObject.transform, smokeParticleSystem);
             SetLayerRecursively(propObject.transform, fireTargetLayer);
             return propObject.transform;
         }
@@ -188,7 +188,7 @@ namespace MRFireSafety.Editor
             CreatePrimitive(PrimitiveType.Cube, "RackPost", parentTransform, localPosition, new Vector3(0.055f, 1.8f, 0.055f), material);
         }
 
-        private static void CreateFireSource(Transform parentTransform)
+        private static void CreateFireSource(Transform parentTransform, ParticleSystem smokeParticleSystem)
         {
             GameObject fireObject = new GameObject("FireSource");
             fireObject.transform.SetParent(parentTransform, false);
@@ -240,10 +240,10 @@ namespace MRFireSafety.Editor
             fireLight.shadows = LightShadows.None;
 
             fireObject.AddComponent<FirePropagationSystem>();
-            fireObject.AddComponent<FireVisualController>();
+            fireObject.AddComponent<FireVisualController>().Configure(particleSystem, smokeParticleSystem, fireLight);
         }
 
-        private static void CreateSmokeVisual(Transform parentTransform)
+        private static ParticleSystem CreateSmokeVisual(Transform parentTransform)
         {
             GameObject smokeObject = new GameObject("SmokeVisual");
             smokeObject.transform.SetParent(parentTransform, false);
@@ -271,6 +271,7 @@ namespace MRFireSafety.Editor
             noiseModule.enabled = true;
             noiseModule.strength = 0.22f;
             noiseModule.frequency = 0.35f;
+            return particleSystem;
         }
 
         private static Transform CreateExtinguisher(Material extinguisherMaterial, Material metalMaterial, Material hoseMaterial, Transform cameraOffsetTransform, int fireTargetLayer)
@@ -340,7 +341,7 @@ namespace MRFireSafety.Editor
             systemsObject.AddComponent<PerformanceProfiler>();
             systemsObject.AddComponent<PerformanceConfigurationService>();
             systemsObject.AddComponent<SessionDataManager>();
-            systemsObject.AddComponent<TrainingSessionController>();
+            systemsObject.AddComponent<TrainingSessionController>().ConfigureRestartInput(CreateActionProperty("Restart"));
             systemsObject.AddComponent<MrReadinessValidator>();
         }
 
@@ -359,11 +360,11 @@ namespace MRFireSafety.Editor
         private static void CreateTrainingHud(Transform cameraTransform)
         {
             GameObject canvasObject = new GameObject("TrainingHUD", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-            canvasObject.transform.SetParent(cameraTransform, false);
 
-            // A head-locked world-space canvas: screen-space overlay is not rendered in XR.
-            canvasObject.transform.localPosition = new Vector3(0f, -0.12f, 1.2f);
-            canvasObject.transform.localScale = Vector3.one * 0.0011f;
+            // A world-space canvas that eases after the gaze: screen-space overlay is not rendered
+            // in XR, and rigidly parenting to the camera is uncomfortable to read.
+            canvasObject.transform.localScale = Vector3.one * 0.0016f;
+            canvasObject.AddComponent<HeadFollowPanelController>().Configure(cameraTransform);
 
             Canvas canvas = canvasObject.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;

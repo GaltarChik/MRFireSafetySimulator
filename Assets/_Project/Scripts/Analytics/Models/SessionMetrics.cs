@@ -55,6 +55,18 @@ namespace MRFireSafety.Analytics.Models
         public float MinimumFramesPerSecond;
 
         /// <summary>
+        /// Stores the frame rate the device was expected to sustain, normally the refresh rate
+        /// reported by the XR display. Frame-rate samples are only interpretable against it.
+        /// </summary>
+        public float TargetFramesPerSecond;
+
+        /// <summary>
+        /// Indicates how the session ended: suppressed, agent depleted, object destroyed, or
+        /// interrupted when the application lost focus.
+        /// </summary>
+        public string Outcome;
+
+        /// <summary>
         /// Stores the hardware profile associated with this session.
         /// </summary>
         public DeviceProfile DeviceProfile;

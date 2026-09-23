@@ -4,6 +4,7 @@ using MRFireSafety.Analytics.Systems;
 using MRFireSafety.Core;
 using MRFireSafety.Fire.Controllers;
 using MRFireSafety.Fire.Systems;
+using MRFireSafety.Suppression.Controllers;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -95,9 +96,10 @@ namespace MRFireSafety.Tests.PlayMode
             sessionController.StartSession();
             Assert.That(sessionDataManager.IsSessionActive, Is.True, "Starting a run should open a metrics session.");
 
-            // Let the fire establish itself above the active-fire threshold before extinguishing it.
+            // Let the fire develop before extinguishing it. Completion arms at ignition, so the
+            // check here only confirms the fire is genuinely burning.
             yield return new WaitForSeconds(2f);
-            Assert.That(firePropagationSystem.AverageIntensity, Is.GreaterThan(0.1f), "The fire should reach the active threshold before suppression.");
+            Assert.That(firePropagationSystem.AverageIntensity, Is.GreaterThan(0.012f), "The fire should be burning above the arming threshold before suppression.");
 
             firePropagationSystem.ApplySuppression(Vector3.zero, 5f, 1f);
             yield return new WaitForSeconds(0.5f);
@@ -106,6 +108,109 @@ namespace MRFireSafety.Tests.PlayMode
             Assert.That(reportedMetrics.IsFireSuppressed, Is.True, "The report should record the fire as suppressed.");
             Assert.That(reportedMetrics.DurationSeconds, Is.GreaterThan(0f), "The report should record a positive session duration.");
             Assert.That(sessionDataManager.IsSessionActive, Is.False, "The session should be closed after completion.");
+        }
+
+        /// <summary>
+        /// Verifies that the nozzle ray finds the fire through the prop collider, reduces its
+        /// intensity, and draws the corresponding amount from the extinguisher reservoir.
+        /// </summary>
+        /// <returns>An enumerator required by the play-mode test runner.</returns>
+        [UnityTest]
+        public IEnumerator NozzleRaycast_HittingFire_ReducesIntensityAndConsumesAgent()
+        {
+            FirePropagationSystem firePropagationSystem = CreateFireRig(out _);
+            _propObject.transform.position = new Vector3(0f, 0f, 2f);
+            BoxCollider propCollider = _propObject.AddComponent<BoxCollider>();
+            propCollider.isTrigger = true;
+
+            GameObject nozzleObject = new GameObject("TestNozzle");
+            nozzleObject.transform.SetParent(_systemsObject.transform, false);
+            nozzleObject.transform.SetPositionAndRotation(Vector3.zero, Quaternion.LookRotation(Vector3.forward));
+
+            SuppressionRaycastController raycastController = _systemsObject.AddComponent<SuppressionRaycastController>();
+            raycastController.Configure(default, nozzleObject.transform, null, ~0);
+            AgentSuppressionManager agentManager = _systemsObject.AddComponent<AgentSuppressionManager>();
+
+            firePropagationSystem.InitializeFire();
+            float intensityBeforeSuppression = firePropagationSystem.AverageIntensity;
+            float agentBeforeSuppression = agentManager.RemainingAgentCapacity;
+            yield return null;
+
+            bool hasHitFire = raycastController.DischargeAgent(0.5f);
+
+            Assert.That(hasHitFire, Is.True, "The nozzle ray should reach the fire through the prop collider.");
+            Assert.That(firePropagationSystem.AverageIntensity, Is.LessThan(intensityBeforeSuppression), "A hit should reduce fire intensity.");
+            Assert.That(agentManager.RemainingAgentCapacity, Is.LessThan(agentBeforeSuppression), "Discharging should consume extinguishing agent.");
+        }
+
+        /// <summary>
+        /// Verifies that discharging away from the fire still empties the extinguisher and ends the
+        /// run as a failure. Agent is spent by pulling the trigger, so poor aim carries a cost.
+        /// </summary>
+        /// <returns>An enumerator required by the play-mode test runner.</returns>
+        [UnityTest]
+        public IEnumerator SprayingAwayFromFire_DepletesAgentAndEndsSessionAsFailure()
+        {
+            FirePropagationSystem firePropagationSystem = CreateFireRig(out _);
+            SessionDataManager sessionDataManager = _systemsObject.AddComponent<SessionDataManager>();
+
+            GameObject nozzleObject = new GameObject("TestNozzle");
+            nozzleObject.transform.SetParent(_systemsObject.transform, false);
+
+            // Aim at empty space: nothing to hit, but the extinguisher still discharges.
+            nozzleObject.transform.SetPositionAndRotation(Vector3.zero, Quaternion.LookRotation(Vector3.down));
+
+            SuppressionRaycastController raycastController = _systemsObject.AddComponent<SuppressionRaycastController>();
+            raycastController.Configure(default, nozzleObject.transform, null, ~0);
+            AgentSuppressionManager agentManager = _systemsObject.AddComponent<AgentSuppressionManager>();
+            agentManager.ConfigureCapacity(1f);
+            TrainingSessionController sessionController = _systemsObject.AddComponent<TrainingSessionController>();
+
+            SessionMetrics reportedMetrics = null;
+            sessionDataManager.SessionEnded += metrics => reportedMetrics = metrics;
+
+            sessionController.StartSession();
+            yield return null;
+
+            // One second of discharge at the default rate of 0.5 units/s empties a 1 unit reservoir
+            // in two applications, while the fire keeps burning untouched.
+            raycastController.DischargeAgent(1f);
+            raycastController.DischargeAgent(1f);
+            yield return new WaitForSeconds(0.5f);
+
+            Assert.That(agentManager.HasAgentRemaining, Is.False, "Spraying at nothing should still empty the extinguisher.");
+            Assert.That(reportedMetrics, Is.Not.Null, "Running out of agent while the fire burns should end the run.");
+            Assert.That(reportedMetrics.Outcome, Is.EqualTo(SessionOutcome.AgentDepleted.ToString()), "The failure reason should be recorded as agent depletion.");
+            Assert.That(reportedMetrics.IsFireSuppressed, Is.False, "The fire was never hit, so it must not be reported as suppressed.");
+            Assert.That(firePropagationSystem.AverageIntensity, Is.GreaterThan(0f), "The untouched fire should still be burning.");
+        }
+
+        /// <summary>
+        /// Verifies that a completed run can be followed by another one, which is how repeated
+        /// sessions are collected during evaluation.
+        /// </summary>
+        /// <returns>An enumerator required by the play-mode test runner.</returns>
+        [UnityTest]
+        public IEnumerator CompletedSession_CanBeRestarted()
+        {
+            FirePropagationSystem firePropagationSystem = CreateFireRig(out FireObjectIntegrityController integrityController);
+            SessionDataManager sessionDataManager = _systemsObject.AddComponent<SessionDataManager>();
+            TrainingSessionController sessionController = _systemsObject.AddComponent<TrainingSessionController>();
+
+            int completedSessionCount = 0;
+            sessionDataManager.SessionEnded += _ => completedSessionCount++;
+
+            sessionController.StartSession();
+            yield return new WaitForSeconds(2f);
+            firePropagationSystem.ApplySuppression(Vector3.zero, 5f, 1f);
+            yield return new WaitForSeconds(0.5f);
+            Assert.That(completedSessionCount, Is.EqualTo(1), "The first run should complete.");
+
+            sessionController.StartSession();
+
+            Assert.That(sessionDataManager.IsSessionActive, Is.True, "Restarting should open a new metrics session.");
+            Assert.That(firePropagationSystem.AverageIntensity, Is.GreaterThan(0f), "Restarting should re-ignite the fire.");
+            Assert.That(integrityController.CurrentIntegrity, Is.EqualTo(1f).Within(0.0001f), "Restarting should restore the protected object.");
         }
 
         private FirePropagationSystem CreateFireRig(out FireObjectIntegrityController integrityController)

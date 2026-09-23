@@ -10,7 +10,7 @@ namespace MRFireSafety.Tests.EditMode
     public sealed class FirePropagationSystemTests
     {
         private const int CenterColumn = 3;
-        private const int CenterRow = 2;
+        private const int CenterRow = 4;
 
         /// <summary>
         /// Verifies that applying agent at the ignition point lowers total fire intensity.

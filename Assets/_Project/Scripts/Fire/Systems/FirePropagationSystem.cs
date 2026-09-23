@@ -14,14 +14,14 @@ namespace MRFireSafety.Fire.Systems
     {
         [Header("Grid")]
         [SerializeField, Min(1)] private int _gridWidth = 7;
-        [SerializeField, Min(1)] private int _gridHeight = 5;
-        [SerializeField, Min(0.01f)] private float _cellSize = 0.16f;
+        [SerializeField, Min(1)] private int _gridHeight = 9;
+        [SerializeField, Min(0.01f)] private float _cellSize = 0.1f;
         [SerializeField] private FireGridPlane _gridPlane = FireGridPlane.LocalXY;
         [SerializeField, Min(0.02f)] private float _simulationInterval = 0.12f;
 
         [Header("Behaviour")]
         [SerializeField, Range(0f, 1f)] private float _initialIgnitionIntensity = 1f;
-        [SerializeField, Range(0f, 1f)] private float _propagationRate = 0.3f;
+        [SerializeField, Range(0f, 1f)] private float _propagationRate = 0.03f;
         [SerializeField, Range(0f, 1f)] private float _naturalDecayRate = 0.025f;
 
         [Header("Lifecycle")]
@@ -68,6 +68,36 @@ namespace MRFireSafety.Fire.Systems
         /// Gets the local-space plane occupied by the fire grid.
         /// </summary>
         public FireGridPlane GridPlane => _gridPlane;
+
+        /// <summary>
+        /// Sets the tuning constants that define how aggressively the fire spreads, which is what
+        /// distinguishes one training scenario difficulty from another. Call before
+        /// <see cref="InitializeFire"/>; the grid is rebuilt on the next initialization.
+        /// </summary>
+        /// <param name="gridWidth">Number of cells across the burning surface.</param>
+        /// <param name="gridHeight">Number of cells up the burning surface.</param>
+        /// <param name="cellSize">Edge length of one cell, in metres.</param>
+        /// <param name="propagationRate">Fraction of neighbouring intensity drawn in per step.</param>
+        /// <param name="naturalDecayRate">Intensity lost per second by a cell with no burning neighbours.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when a dimension or the cell size is not positive.</exception>
+        public void ConfigureSimulation(int gridWidth, int gridHeight, float cellSize, float propagationRate, float naturalDecayRate)
+        {
+            if (gridWidth < 1 || gridHeight < 1)
+            {
+                throw new ArgumentOutOfRangeException(nameof(gridWidth), "The fire grid must have at least one cell in each dimension.");
+            }
+
+            if (cellSize <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(cellSize), "Cell size must be positive.");
+            }
+
+            _gridWidth = gridWidth;
+            _gridHeight = gridHeight;
+            _cellSize = cellSize;
+            _propagationRate = Mathf.Clamp01(propagationRate);
+            _naturalDecayRate = Mathf.Clamp01(naturalDecayRate);
+        }
 
         /// <summary>
         /// Initializes the cellular grid and ignites its central cell. Calling the method again
@@ -188,21 +218,41 @@ namespace MRFireSafety.Fire.Systems
             }
         }
 
-        private void Update()
+        /// <summary>
+        /// Advances the simulation by however many fixed steps fit into the elapsed time. The frame
+        /// loop calls this with the frame delta; tests and calibration runs call it directly to step
+        /// the model deterministically without waiting in real time.
+        /// </summary>
+        /// <param name="deltaTimeSeconds">Elapsed time to simulate, in seconds.</param>
+        /// <returns>The number of fixed steps that were simulated.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the elapsed time is negative.</exception>
+        public int AdvanceSimulation(float deltaTimeSeconds)
         {
+            if (deltaTimeSeconds < 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(deltaTimeSeconds), "Elapsed time cannot be negative.");
+            }
+
             if (!_isInitialized)
             {
-                return;
+                return 0;
             }
 
-            _simulationElapsedTime += Time.deltaTime;
-            if (_simulationElapsedTime < _simulationInterval)
+            _simulationElapsedTime += deltaTimeSeconds;
+            int stepCount = 0;
+            while (_simulationElapsedTime >= _simulationInterval)
             {
-                return;
+                _simulationElapsedTime -= _simulationInterval;
+                SimulateStep();
+                stepCount++;
             }
 
-            _simulationElapsedTime -= _simulationInterval;
-            SimulateStep();
+            return stepCount;
+        }
+
+        private void Update()
+        {
+            AdvanceSimulation(Time.deltaTime);
         }
 
         private void LateUpdate()

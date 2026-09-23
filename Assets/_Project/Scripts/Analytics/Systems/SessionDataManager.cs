@@ -13,8 +13,9 @@ namespace MRFireSafety.Analytics.Systems
     /// <summary>
     /// Collects session-level performance metrics and persists one JSON report when a training run
     /// ends. The session lifecycle is driven by the training session controller rather than by scene
-    /// load, so the recorded duration measures extinguishing work and not room scanning. File I/O is
-    /// asynchronous and never executes from the frame-update loop.
+    /// load, so the recorded duration measures extinguishing work and not room scanning. Normal
+    /// completion writes the report asynchronously; an interruption such as the headset being
+    /// removed writes it immediately so that the run is not lost.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class SessionDataManager : MonoBehaviour
@@ -22,11 +23,14 @@ namespace MRFireSafety.Analytics.Systems
         [SerializeField] private FirePropagationSystem _firePropagationSystem;
         [SerializeField] private FireObjectIntegrityController _integrityController;
         [SerializeField] private PerformanceProfiler _performanceProfiler;
+        [SerializeField] private PerformanceConfigurationService _performanceConfigurationService;
         [SerializeField] private DeviceProfiler _deviceProfiler;
         [SerializeField] private AgentSuppressionManager _agentSuppressionManager;
         [SerializeField] private SuppressionRaycastController _suppressionController;
         [SerializeField] private string _scenarioId = "ServerRackElectricalFire";
-        [SerializeField, Range(0f, 1f)] private float _suppressedIntensityThreshold = 0.05f;
+        [SerializeField, Range(0f, 1f)] private float _suppressedIntensityThreshold = 0.008f;
+
+        private const string ReportsDirectoryName = "SessionReports";
 
         private SessionMetrics _sessionMetrics;
         private float _sessionStartedAtRealtime;
@@ -56,6 +60,88 @@ namespace MRFireSafety.Analytics.Systems
             ? Time.realtimeSinceStartup - _sessionStartedAtRealtime
             : _lastSessionDurationSeconds;
 
+        /// <summary>
+        /// Starts a new metrics session for the configured training scenario.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">Thrown when another session is already active.</exception>
+        public void BeginSession()
+        {
+            if (_isSessionActive)
+            {
+                throw new InvalidOperationException("A training session is already active.");
+            }
+
+            _sessionMetrics = new SessionMetrics
+            {
+                ScenarioId = _scenarioId,
+                StartedAtUtc = DateTime.UtcNow.ToString("O"),
+                ObjectIntegrity = 1f,
+                Outcome = SessionOutcome.InProgress.ToString()
+            };
+            _sessionStartedAtRealtime = Time.realtimeSinceStartup;
+            _performanceProfiler?.ResetSamples();
+            _isSessionActive = true;
+            SessionStarted?.Invoke();
+        }
+
+        /// <summary>
+        /// Finalizes the active session and writes its JSON report to persistent application storage.
+        /// </summary>
+        /// <param name="outcome">How the training run finished.</param>
+        /// <returns>A task that completes after the JSON report has been written.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when no training session is active.</exception>
+        public async Task EndSessionAsync(SessionOutcome outcome)
+        {
+            string json = FinalizeSession(outcome);
+            string reportPath = PrepareReportPath();
+            await File.WriteAllTextAsync(reportPath, json);
+            Debug.Log("MR Fire Safety: session report saved to " + reportPath);
+        }
+
+        /// <summary>
+        /// Finalizes the active session and writes its report synchronously. Intended for shutdown
+        /// paths such as application pause or quit, where an awaited write would not complete.
+        /// </summary>
+        /// <param name="outcome">How the training run finished.</param>
+        /// <exception cref="InvalidOperationException">Thrown when no training session is active.</exception>
+        public void EndSessionImmediately(SessionOutcome outcome)
+        {
+            string json = FinalizeSession(outcome);
+            string reportPath = PrepareReportPath();
+            File.WriteAllText(reportPath, json);
+            Debug.Log("MR Fire Safety: interrupted session report saved to " + reportPath);
+        }
+
+        private string FinalizeSession(SessionOutcome outcome)
+        {
+            if (!_isSessionActive)
+            {
+                throw new InvalidOperationException("No active training session is available to end.");
+            }
+
+            _lastSessionDurationSeconds = Time.realtimeSinceStartup - _sessionStartedAtRealtime;
+            _sessionMetrics.DurationSeconds = _lastSessionDurationSeconds;
+            _sessionMetrics.FinalFireIntensity = _firePropagationSystem == null ? 0f : _firePropagationSystem.AverageIntensity;
+            _sessionMetrics.ObjectIntegrity = _integrityController == null ? _sessionMetrics.ObjectIntegrity : _integrityController.CurrentIntegrity;
+            _sessionMetrics.IsFireSuppressed = _sessionMetrics.FinalFireIntensity <= _suppressedIntensityThreshold;
+            _sessionMetrics.AverageFramesPerSecond = _performanceProfiler == null ? 0f : _performanceProfiler.AverageFramesPerSecond;
+            _sessionMetrics.MinimumFramesPerSecond = _performanceProfiler == null ? 0f : _performanceProfiler.MinimumFramesPerSecond;
+            _sessionMetrics.TargetFramesPerSecond = _performanceProfiler == null ? 0f : _performanceProfiler.TargetFramesPerSecond;
+            _sessionMetrics.DeviceProfile = _deviceProfiler == null ? null : _deviceProfiler.CurrentProfile;
+            _sessionMetrics.Outcome = outcome.ToString();
+            _isSessionActive = false;
+            SessionEnded?.Invoke(_sessionMetrics);
+            return JsonUtility.ToJson(_sessionMetrics, true);
+        }
+
+        private static string PrepareReportPath()
+        {
+            string reportsDirectory = Path.Combine(Application.persistentDataPath, ReportsDirectoryName);
+            Directory.CreateDirectory(reportsDirectory);
+            string reportName = "session_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff") + ".json";
+            return Path.Combine(reportsDirectory, reportName);
+        }
+
         private void Awake()
         {
             if (_firePropagationSystem == null)
@@ -78,6 +164,11 @@ namespace MRFireSafety.Analytics.Systems
                 _performanceProfiler = FindFirstObjectByType<PerformanceProfiler>();
             }
 
+            if (_performanceConfigurationService == null)
+            {
+                _performanceConfigurationService = FindFirstObjectByType<PerformanceConfigurationService>();
+            }
+
             if (_deviceProfiler == null)
             {
                 _deviceProfiler = FindFirstObjectByType<DeviceProfiler>();
@@ -97,7 +188,12 @@ namespace MRFireSafety.Analytics.Systems
             }
             else if (_suppressionController != null)
             {
-                _suppressionController.AgentApplied += HandleAgentApplied;
+                _suppressionController.AgentDischarged += HandleAgentApplied;
+            }
+
+            if (_performanceConfigurationService != null)
+            {
+                _performanceConfigurationService.TargetFrameRateResolved += HandleTargetFrameRateResolved;
             }
         }
 
@@ -109,63 +205,48 @@ namespace MRFireSafety.Analytics.Systems
             }
             else if (_suppressionController != null)
             {
-                _suppressionController.AgentApplied -= HandleAgentApplied;
+                _suppressionController.AgentDischarged -= HandleAgentApplied;
+            }
+
+            if (_performanceConfigurationService != null)
+            {
+                _performanceConfigurationService.TargetFrameRateResolved -= HandleTargetFrameRateResolved;
             }
         }
 
-        /// <summary>
-        /// Starts a new metrics session for the configured training scenario.
-        /// </summary>
-        /// <exception cref="InvalidOperationException">Thrown when another session is already active.</exception>
-        public void BeginSession()
+        private void OnApplicationPause(bool isPaused)
         {
-            if (_isSessionActive)
+            if (isPaused)
             {
-                throw new InvalidOperationException("A training session is already active.");
+                SaveInterruptedSession();
             }
-
-            _sessionMetrics = new SessionMetrics
-            {
-                ScenarioId = _scenarioId,
-                StartedAtUtc = DateTime.UtcNow.ToString("O"),
-                ObjectIntegrity = 1f
-            };
-            _sessionStartedAtRealtime = Time.realtimeSinceStartup;
-            _performanceProfiler?.ResetSamples();
-            _isSessionActive = true;
-            SessionStarted?.Invoke();
         }
 
-        /// <summary>
-        /// Finalizes the active session and writes its JSON report to persistent application storage.
-        /// </summary>
-        /// <returns>A task that completes after the JSON report has been written.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when no training session is active.</exception>
-        public async Task EndSessionAsync()
+        private void OnApplicationQuit()
+        {
+            SaveInterruptedSession();
+        }
+
+        private void SaveInterruptedSession()
         {
             if (!_isSessionActive)
             {
-                throw new InvalidOperationException("No active training session is available to end.");
+                return;
             }
 
-            _lastSessionDurationSeconds = Time.realtimeSinceStartup - _sessionStartedAtRealtime;
-            _sessionMetrics.DurationSeconds = _lastSessionDurationSeconds;
-            _sessionMetrics.FinalFireIntensity = _firePropagationSystem == null ? 0f : _firePropagationSystem.AverageIntensity;
-            _sessionMetrics.ObjectIntegrity = _integrityController == null ? _sessionMetrics.ObjectIntegrity : _integrityController.CurrentIntegrity;
-            _sessionMetrics.IsFireSuppressed = _sessionMetrics.FinalFireIntensity <= _suppressedIntensityThreshold;
-            _sessionMetrics.AverageFramesPerSecond = _performanceProfiler == null ? 0f : _performanceProfiler.AverageFramesPerSecond;
-            _sessionMetrics.MinimumFramesPerSecond = _performanceProfiler == null ? 0f : _performanceProfiler.MinimumFramesPerSecond;
-            _sessionMetrics.DeviceProfile = _deviceProfiler == null ? null : _deviceProfiler.CurrentProfile;
-            _isSessionActive = false;
-            SessionEnded?.Invoke(_sessionMetrics);
+            try
+            {
+                EndSessionImmediately(SessionOutcome.Interrupted);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception, this);
+            }
+        }
 
-            string reportsDirectory = Path.Combine(Application.persistentDataPath, "SessionReports");
-            Directory.CreateDirectory(reportsDirectory);
-            string reportName = "session_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss") + ".json";
-            string reportPath = Path.Combine(reportsDirectory, reportName);
-            string json = JsonUtility.ToJson(_sessionMetrics, true);
-            await File.WriteAllTextAsync(reportPath, json);
-            Debug.Log("MR Fire Safety: session report saved to " + reportPath);
+        private void HandleTargetFrameRateResolved(float targetFrameRate)
+        {
+            _performanceProfiler?.SetTargetFrameRate(targetFrameRate);
         }
 
         private void HandleAgentApplied(float appliedAmount)

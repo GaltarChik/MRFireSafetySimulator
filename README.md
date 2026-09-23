@@ -59,11 +59,26 @@ Assets/_Project/
 Each subsystem is a separate assembly definition; dependencies point one way only
 (`Fire → Suppression → Analytics → Core / UI`).
 
+## Controls
+
+| Control | Action |
+|---|---|
+| Right trigger | Discharge extinguishing agent — spends agent whether or not you hit |
+| Right controller pose | Aim the extinguisher nozzle |
+| **B** (right secondary) | Start the next run after a session ends |
+
+The session starts by itself once the prop is anchored on the detected floor.
+
 ## Session data
 
-Each completed run writes one JSON report to
+Each run writes one JSON report to
 `Application.persistentDataPath/SessionReports/session_<UTC timestamp>.json`, containing duration,
-agent consumed, remaining object integrity, final fire intensity, and frame-rate telemetry.
+agent consumed, remaining object integrity, final fire intensity, frame-rate telemetry against the
+device refresh rate, and an outcome field.
+
+Outcomes are `Suppressed`, `AgentDepleted`, `ObjectDestroyed`, or `Interrupted`. A run interrupted by
+removing the headset is still saved so the data is not lost, but **filter those out before comparing
+performance** — they are incomplete by definition.
 
 On Quest, pull them with:
 
@@ -76,11 +91,21 @@ adb pull /sdcard/Android/data/com.unideb.mrfiresafety.MRFireSafetySimulator/file
 - [Technical Architecture Document](Docs/TechnicalArchitectureDocument.md) — architecture, fire model
   formulation, suppression model, performance budget, design decisions.
 - [Literature Review Notes](Docs/LiteratureReviewNotes.md) — working notes and search protocol.
+- [Quest Setup Guide](Docs/QuestSetupGuide.ru.md) *(in Russian)* — step-by-step device setup,
+  deployment, in-headset walkthrough and troubleshooting.
 
 ## Status
 
-Implemented and compiling: spatial tracking, anchoring, controller input, fire simulation,
-suppression, analytics, HUD, and the generated MR scene. EditMode and PlayMode suites pass.
+Implemented and passing tests (EditMode 10, PlayMode 6): spatial tracking, anchoring, controller
+input, fire simulation, suppression with trigger-based agent consumption, session lifecycle with
+outcomes and restart, analytics, gaze-following HUD, and the generated MR scene.
 
-Pending: deployment to a headset, calibration of the fire and suppression rates against real
-sessions, and profiling to confirm the 72 FPS target.
+The fire model is calibrated by measurement rather than by feel — see
+[Technical Architecture Document §3.3](Docs/TechnicalArchitectureDocument.md). A well-executed run
+lasts about 48 s and consumes roughly 4 of the 10 agent units. `FireModelSweepTests` regenerates the
+calibration table if the model is retuned, and `TrainingSceneBudgetTests` guards the content budget
+(444 triangles, 20 renderers, no shadow-casting lights).
+
+Pending, and only doable on hardware: deployment to a headset, confirmation that plane detection and
+anchoring behave in a real room, tuning the HUD follow thresholds for personal comfort, and
+profiling to confirm the 72 FPS target. Static budgets cannot establish a frame rate.

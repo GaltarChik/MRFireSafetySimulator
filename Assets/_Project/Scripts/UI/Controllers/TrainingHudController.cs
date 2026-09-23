@@ -27,7 +27,7 @@ namespace MRFireSafety.UI.Controllers
         [SerializeField] private Slider _agentSlider;
         [SerializeField] private Slider _fireSlider;
         [SerializeField] private Slider _integritySlider;
-        [SerializeField, Range(0f, 1f)] private float _suppressedFireThreshold = 0.025f;
+        [SerializeField, Range(0f, 1f)] private float _suppressedFireThreshold = 0.008f;
 
         private float _maximumAgentCapacity = 1f;
         private int _displayedSeconds = -1;

@@ -5,9 +5,10 @@ using UnityEngine;
 namespace MRFireSafety.Suppression.Controllers
 {
     /// <summary>
-    /// Tracks virtual extinguisher-agent capacity and aggregates agent use reported by the raycast
-    /// and particle suppression paths. The manager owns which mechanism is authoritative and gates
-    /// every suppression source when the reservoir runs empty.
+    /// Tracks virtual extinguisher-agent capacity and owns which suppression mechanism is
+    /// authoritative. Agent is drawn down by discharge rather than by hits, so missing the fire
+    /// still costs the trainee capacity, and the manager gates every suppression source once the
+    /// reservoir runs empty.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class AgentSuppressionManager : MonoBehaviour
@@ -49,6 +50,32 @@ namespace MRFireSafety.Suppression.Controllers
         /// </summary>
         public SuppressionSourceMode SourceMode => _suppressionSourceMode;
 
+        /// <summary>
+        /// Sets the reservoir size. Intended for scenario setup and tests; call before a run starts.
+        /// </summary>
+        /// <param name="maximumAgentCapacity">Total agent the extinguisher holds.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when the capacity is not positive.</exception>
+        public void ConfigureCapacity(float maximumAgentCapacity)
+        {
+            if (maximumAgentCapacity <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maximumAgentCapacity), "Extinguisher capacity must be positive.");
+            }
+
+            _maximumAgentCapacity = maximumAgentCapacity;
+            _remainingAgentCapacity = Mathf.Min(_remainingAgentCapacity, maximumAgentCapacity);
+        }
+
+        /// <summary>
+        /// Refills the virtual extinguisher to its configured maximum capacity and re-enables the
+        /// suppression sources selected by the current mode.
+        /// </summary>
+        public void RefillAgent()
+        {
+            _remainingAgentCapacity = _maximumAgentCapacity;
+            ApplySourceMode();
+        }
+
         private void Awake()
         {
             _remainingAgentCapacity = _maximumAgentCapacity;
@@ -69,12 +96,7 @@ namespace MRFireSafety.Suppression.Controllers
         {
             if (_raycastController != null)
             {
-                _raycastController.AgentApplied += HandleAgentApplied;
-            }
-
-            if (_particleCollisionHandler != null)
-            {
-                _particleCollisionHandler.AgentApplied += HandleAgentApplied;
+                _raycastController.AgentDischarged += HandleAgentDischarged;
             }
         }
 
@@ -82,23 +104,8 @@ namespace MRFireSafety.Suppression.Controllers
         {
             if (_raycastController != null)
             {
-                _raycastController.AgentApplied -= HandleAgentApplied;
+                _raycastController.AgentDischarged -= HandleAgentDischarged;
             }
-
-            if (_particleCollisionHandler != null)
-            {
-                _particleCollisionHandler.AgentApplied -= HandleAgentApplied;
-            }
-        }
-
-        /// <summary>
-        /// Refills the virtual extinguisher to its configured maximum capacity and re-enables the
-        /// suppression sources selected by the current mode.
-        /// </summary>
-        public void RefillAgent()
-        {
-            _remainingAgentCapacity = _maximumAgentCapacity;
-            ApplySourceMode();
         }
 
         private void ApplySourceMode()
@@ -114,7 +121,7 @@ namespace MRFireSafety.Suppression.Controllers
             _particleCollisionHandler?.SetSuppressionEnabled(isParticleAuthoritative && HasAgentRemaining);
         }
 
-        private void HandleAgentApplied(float requestedAmount)
+        private void HandleAgentDischarged(float requestedAmount)
         {
             if (!HasAgentRemaining || requestedAmount <= 0f)
             {

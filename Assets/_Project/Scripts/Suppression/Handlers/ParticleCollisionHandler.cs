@@ -16,16 +16,17 @@ namespace MRFireSafety.Suppression.Handlers
     public sealed class ParticleCollisionHandler : MonoBehaviour
     {
         [SerializeField, Min(0.001f)] private float _suppressionPerCollision = 0.015f;
-        [SerializeField, Min(0.01f)] private float _suppressionRadius = 0.12f;
+        [SerializeField, Min(0.01f)] private float _suppressionRadius = 0.2f;
         [SerializeField, Min(1)] private int _maximumCollisionEventsPerFrame = 12;
 
         private readonly List<ParticleCollisionEvent> _collisionEvents = new List<ParticleCollisionEvent>(16);
         private ParticleSystem _agentParticleSystem;
 
         /// <summary>
-        /// Raised after a particle collision applies agent to a fire source.
+        /// Raised after particle impacts reduce a fire source, carrying the removed intensity.
+        /// Agent consumption is accounted for at the nozzle, not here.
         /// </summary>
-        public event Action<float> AgentApplied;
+        public event Action<float> SuppressionApplied;
 
         /// <summary>
         /// Gets whether particle collisions currently reduce fire intensity. The agent manager
@@ -71,7 +72,7 @@ namespace MRFireSafety.Suppression.Handlers
             {
                 Vector3 localImpactPoint = firePropagationSystem.transform.InverseTransformPoint(_collisionEvents[eventIndex].intersection);
                 firePropagationSystem.ApplySuppression(localImpactPoint, _suppressionRadius, _suppressionPerCollision);
-                AgentApplied?.Invoke(_suppressionPerCollision);
+                SuppressionApplied?.Invoke(_suppressionPerCollision);
             }
         }
     }
